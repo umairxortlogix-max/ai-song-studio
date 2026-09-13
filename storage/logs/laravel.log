@@ -1,0 +1,4 @@
+[2026-09-13 23:56:16] local.INFO: Lyrics generation started. {"song_id":2,"generation_id":2} 
+[2026-09-13 23:56:17] local.INFO: Lyrics generation skipped because lyrics already exist. {"song_id":2,"generation_id":2} 
+[2026-09-13 23:56:17] local.INFO: Music generation started. {"song_id":2,"generation_id":2} 
+[2026-09-13 23:56:17] local.ERROR: Music generation failed. {"song_id":2,"generation_id":2} 
