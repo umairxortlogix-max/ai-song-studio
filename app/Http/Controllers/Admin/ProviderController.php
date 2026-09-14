@@ -95,4 +95,7 @@ class ProviderController extends Controller
 
         return view('admin.providers.logs', compact('provider', 'logs'));
     }
+    public function tesert(){
+        echo('test');
+    }
 }
