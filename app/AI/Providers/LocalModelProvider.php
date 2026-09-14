@@ -133,8 +133,12 @@ class LocalModelProvider extends AbstractProvider
 
     private function callLocalServer(string $path, array $payload): array
     {
+        $url = rtrim($this->baseUrl(), '/') . $path;
+
+        $this->logOutgoingRequest('POST', $url, $payload, [], 'local_inference');
+
         try {
-            $response = $this->http(120)->post(rtrim($this->baseUrl(), '/') . $path, $payload);
+            $response = $this->http(120)->post($url, $payload);
         } catch (\Throwable $e) {
             throw new TemporaryProviderException($this->getSlug(), 'Local inference server unreachable: ' . $e->getMessage());
         }

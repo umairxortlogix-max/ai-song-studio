@@ -26,20 +26,50 @@ abstract class AbstractProvider implements MusicProviderInterface
         return $this->providerModel->name;
     }
 
-    protected function apiKey(): ?string
+    protected function configuredProviderValue(string $field, mixed $fallback = null): mixed
     {
-        // Decrypted automatically via the AiProvider model's cast, see App\Models\AiProvider.
-        return $this->providerModel->api_key;
+        $providerType = (string) ($this->providerModel->provider_type ?? '');
+
+        if ($providerType !== '') {
+            $configValue = config('services.ai.' . $providerType . '.' . $field, null);
+
+            if (is_string($configValue) && trim($configValue) !== '') {
+                return $configValue;
+            }
+
+            if ($configValue !== null && $configValue !== '') {
+                return $configValue;
+            }
+        }
+
+        return $fallback;
     }
+
+ protected function apiKey(): ?string
+{
+    $value = $this->configuredProviderValue('key', $this->providerModel->api_key);
+
+    return (is_string($value) && trim($value) !== '') ? $value : null;
+}
 
     protected function baseUrl(): ?string
     {
-        return $this->providerModel->api_base_url;
+        return $this->configuredProviderValue('url', $this->providerModel->api_base_url);
+    }
+
+    protected function modelName(): ?string
+    {
+        return $this->configuredProviderValue('model', $this->providerModel->model);
     }
 
     protected function http(int $timeoutSeconds = 30)
     {
         return Http::timeout($timeoutSeconds)->retry(0);
+    }
+
+    protected function logOutgoingRequest(string $method, string $url, array $payload = [], array $headers = [], string $operation = 'unknown'): void
+    {
+        // Intentionally silent. Provider request details are not logged at info level to avoid noisy production logs.
     }
 
     public function getRemainingQuota(): array

@@ -2,10 +2,14 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Crypt;
 
 class AiProvider extends Model
 {
+    use HasFactory;
+
     protected $fillable = [
         'name', 'slug', 'provider_type', 'api_key', 'api_base_url', 'model',
         'is_active', 'priority', 'daily_limit', 'monthly_limit',
@@ -19,8 +23,31 @@ class AiProvider extends Model
         return [
             'is_active' => 'boolean',
             'last_used_at' => 'datetime',
-            'api_key' => 'encrypted', // never stored/shown in plaintext
         ];
+    }
+
+    public function getApiKeyAttribute($value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        try {
+            return Crypt::decryptString($value);
+        } catch (\Throwable) {
+            return $value;
+        }
+    }
+
+    public function setApiKeyAttribute($value): void
+    {
+        if ($value === null || $value === '') {
+            $this->attributes['api_key'] = null;
+
+            return;
+        }
+
+        $this->attributes['api_key'] = Crypt::encryptString((string) $value);
     }
 
     public function usageLogs()

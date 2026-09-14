@@ -122,17 +122,20 @@ Edit `.env` with your **real, officially issued** API keys. Never commit
 these to version control.
 
 ```env
-# Provider A (priority 1)
+# Provider A (priority 1) — Hugging Face music model
+# For Hugging Face, enable the token's Inference Providers access / model permissions
+# if the request returns 401/403 or a permission-scope error.
 AI_PROVIDER_A_KEY=your_huggingface_token
 AI_PROVIDER_A_URL=https://api-inference.huggingface.co
-AI_PROVIDER_A_MODEL=mistralai/Mistral-7B-Instruct-v0.2
+AI_PROVIDER_A_MODEL=facebook/musicgen-small
 
-# Provider B (priority 2)
+# Provider B (priority 2) — Replicate music + vocals models
 AI_PROVIDER_B_KEY=your_replicate_token
 AI_PROVIDER_B_URL=https://api.replicate.com/v1
-AI_PROVIDER_B_MODEL=your-model-version-id
+AI_PROVIDER_B_MODEL=meta/musicgen
+AI_PROVIDER_B_VOCALS_MODEL=suno-ai/bark
 
-# Provider C (priority 3)
+# Provider C (priority 3) — Stability AI music model only
 AI_PROVIDER_C_KEY=your_stability_key
 AI_PROVIDER_C_URL=https://api.stability.ai/v2beta
 AI_PROVIDER_C_MODEL=stable-audio

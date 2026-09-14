@@ -35,15 +35,24 @@ class StabilityAudioProvider extends AbstractProvider
 
         // Correct endpoint for Stability's Stable Audio 2.0 text-to-audio API.
         // Requires "Accept: audio/*" to get raw audio bytes back instead of JSON.
+        $url = rtrim($this->baseUrl(), '/') . '/audio/stable-audio-2/text-to-audio';
+        $payload = [
+            ['name' => 'prompt', 'contents' => $prompt],
+            ['name' => 'duration', 'contents' => (string) ($request->durationSeconds ?? 30)],
+            ['name' => 'output_format', 'contents' => 'mp3'],
+        ];
+
+        $this->logOutgoingRequest('POST', $url, [
+            'prompt' => $prompt,
+            'duration' => (string) ($request->durationSeconds ?? 30),
+            'output_format' => 'mp3',
+        ], ['Accept' => 'audio/*', 'Authorization' => 'Bearer [REDACTED]'], 'generate_music');
+
         $response = $this->http(45)
             ->withToken($this->apiKey())
             ->withHeaders(['Accept' => 'audio/*'])
             ->asMultipart()
-            ->post(rtrim($this->baseUrl(), '/') . '/audio/stable-audio-2/text-to-audio', [
-                ['name' => 'prompt', 'contents' => $prompt],
-                ['name' => 'duration', 'contents' => (string) ($request->durationSeconds ?? 30)],
-                ['name' => 'output_format', 'contents' => 'mp3'],
-            ]);
+            ->post($url, $payload);
 
         $this->throwForHttpErrors($response);
 
@@ -79,7 +88,9 @@ class StabilityAudioProvider extends AbstractProvider
 
     public function supportedOperations(): array
     {
-        return ['generate_music']; // this provider cannot make lyrics or vocals
+        $model = strtolower((string) ($this->modelName() ?? ''));
+
+        return str_contains($model, 'stable-audio') ? ['generate_music'] : [];
     }
 
     private function throwForHttpErrors($response): void

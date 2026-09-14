@@ -18,6 +18,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/songs/create', [SongController::class, 'create'])->name('songs.create');
     Route::post('/songs', [SongController::class, 'store'])->name('songs.store');
     Route::get('/songs/{song}', [SongController::class, 'show'])->name('songs.show');
+    Route::post('/songs/{song}/regenerate', [SongController::class, 'regenerate'])->name('songs.regenerate');
     Route::get('/songs/{song}/status', [SongController::class, 'status'])->name('songs.status');
     Route::get('/songs/{song}/download/{format}', [SongController::class, 'download'])->name('songs.download');
     Route::post('/songs/{song}/favorite', [SongController::class, 'toggleFavorite'])->name('songs.favorite');

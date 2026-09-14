@@ -24,6 +24,36 @@ class AiRouterFallbackTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_it_encrypts_new_api_keys_and_reads_legacy_plaintext_values(): void
+    {
+        $provider = AiProvider::factory()->create(['api_key' => 'secret-key']);
+
+        $this->assertSame('secret-key', $provider->api_key);
+        $this->assertNotSame('secret-key', $provider->getRawOriginal('api_key'));
+
+        $legacyId = AiProvider::query()->insertGetId([
+            'name' => 'legacy provider',
+            'slug' => 'legacy-provider',
+            'provider_type' => 'fake',
+            'api_key' => 'legacy-secret',
+            'api_base_url' => 'https://example.test',
+            'model' => 'legacy-model',
+            'is_active' => true,
+            'priority' => 99,
+            'daily_limit' => 100,
+            'monthly_limit' => 3000,
+            'used_today' => 0,
+            'used_this_month' => 0,
+            'status' => 'healthy',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $legacy = AiProvider::findOrFail($legacyId);
+
+        $this->assertSame('legacy-secret', $legacy->api_key);
+    }
+
     public function test_it_falls_back_to_next_provider_on_rate_limit(): void
     {
         $providerA = AiProvider::factory()->create(['priority' => 1, 'slug' => 'provider-a', 'provider_type' => 'fake']);

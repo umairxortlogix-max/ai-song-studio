@@ -22,7 +22,15 @@
             </div>
         </div>
 
-        <div x-show="status === 'failed'" class="text-sm text-red-600 mb-4" x-text="errorMessage"></div>
+        <div x-show="status === 'failed'" class="mb-4 space-y-3">
+            <div class="text-sm text-red-600" x-text="errorMessage"></div>
+            <form method="POST" action="{{ route('songs.regenerate', $song) }}">
+                @csrf
+                <button type="submit" class="px-4 py-2 rounded-lg bg-red-600 text-white text-sm hover:bg-red-700">
+                    Try again
+                </button>
+            </form>
+        </div>
 
         <!-- Player -->
         <div x-show="status === 'completed'" x-cloak>

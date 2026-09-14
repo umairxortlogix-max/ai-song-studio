@@ -1,3 +1,4 @@
+
 <?php $__env->startSection('content'); ?>
 
 <div x-data="songStatus(<?php echo e($song->id); ?>, '<?php echo e($song->status); ?>')" x-init="init()" class="max-w-3xl mx-auto space-y-6">
@@ -21,7 +22,15 @@
             </div>
         </div>
 
-        <div x-show="status === 'failed'" class="text-sm text-red-600 mb-4" x-text="errorMessage"></div>
+        <div x-show="status === 'failed'" class="mb-4 space-y-3">
+            <div class="text-sm text-red-600" x-text="errorMessage"></div>
+            <form method="POST" action="<?php echo e(route('songs.regenerate', $song)); ?>">
+                <?php echo csrf_field(); ?>
+                <button type="submit" class="px-4 py-2 rounded-lg bg-red-600 text-white text-sm hover:bg-red-700">
+                    Try again
+                </button>
+            </form>
+        </div>
 
         <!-- Player -->
         <div x-show="status === 'completed'" x-cloak>
@@ -86,4 +95,4 @@ function songStatus(songId, initialStatus) {
 </script>
 <?php $__env->stopSection(); ?>
 
-<?php echo $__env->make('layouts.app', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?><?php /**PATH D:\laravel project\ai-song-studio\resources\views\songs\show.blade.php ENDPATH**/ ?>
+<?php echo $__env->make('layouts.app', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?><?php /**PATH C:\laragon\www\ai-song-studio\resources\views/songs/show.blade.php ENDPATH**/ ?>

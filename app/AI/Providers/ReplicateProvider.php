@@ -41,15 +41,19 @@ class ReplicateProvider extends AbstractProvider
             implode(', ', $request->instruments) ?: 'orchestral'
         ));
 
+        $url = rtrim($this->baseUrl(), '/') . '/models/' . $this->modelName() . '/predictions';
+        $payload = [
+            'input' => [
+                'prompt' => $prompt,
+                'duration' => $request->durationSeconds ?? 30,
+            ],
+        ];
+
+        $this->logOutgoingRequest('POST', $url, $payload, ['Authorization' => 'Token [REDACTED]'], 'generate_music');
+
         $create = $this->http(30)
             ->withHeaders(['Authorization' => 'Token ' . $this->apiKey()])
-            ->post(rtrim($this->baseUrl(), '/') . '/predictions', [
-                'version' => $this->providerModel->model,
-                'input' => [
-                    'prompt' => $prompt,
-                    'duration' => $request->durationSeconds ?? 30,
-                ],
-            ]);
+            ->post($url, $payload);
 
         $this->throwForHttpErrors($create);
 
@@ -65,7 +69,36 @@ class ReplicateProvider extends AbstractProvider
 
     public function generateVocals(VocalsRequest $request): VocalsResult
     {
-        throw new TemporaryProviderException($this->getSlug(), 'This provider does not synthesize vocals.');
+        $model = trim((string) $this->modelName());
+        if (!str_contains(strtolower($model), 'bark') && !str_contains(strtolower($model), 'riffusion')) {
+            throw new TemporaryProviderException($this->getSlug(), 'This Replicate model is not configured for vocal synthesis.');
+        }
+
+        $payload = [
+            'version' => $model,
+            'input' => [
+                'text' => $request->lyrics,
+                'prompt' => $request->lyrics,
+                'voice' => $request->voiceStyle ?? 'neutral',
+            ],
+        ];
+
+        $url = rtrim($this->baseUrl(), '/') . '/predictions';
+        $this->logOutgoingRequest('POST', $url, $payload, ['Authorization' => 'Token [REDACTED]'], 'generate_vocals');
+
+        $create = $this->http(30)
+            ->withHeaders(['Authorization' => 'Token ' . $this->apiKey()])
+            ->post($url, $payload);
+
+        $this->throwForHttpErrors($create);
+
+        $predictionId = $create->json('id');
+        $pollUrl = $create->json('urls.get') ?? rtrim($this->baseUrl(), '/') . "/predictions/{$predictionId}";
+        $audioUrl = $this->pollUntilComplete($pollUrl);
+
+        $relativePath = $this->downloadToStorage($audioUrl, 'vocals');
+
+        return new VocalsResult(filePath: $relativePath, providerSlug: $this->getSlug());
     }
 
     public function generateSong(SongRequest $request): SongResult
@@ -96,12 +129,24 @@ class ReplicateProvider extends AbstractProvider
 
     public function supportedOperations(): array
     {
-        return ['generate_music']; // this provider cannot make lyrics or vocals
+        $model = strtolower((string) ($this->modelName() ?? ''));
+        $operations = [];
+
+        if (str_contains($model, 'musicgen')) {
+            $operations[] = 'generate_music';
+        }
+
+        if (str_contains($model, 'bark') || str_contains($model, 'riffusion')) {
+            $operations[] = 'generate_vocals';
+        }
+
+        return $operations;
     }
 
     private function pollUntilComplete(string $pollUrl, int $maxAttempts = 30, int $delaySeconds = 2): string
     {
         for ($i = 0; $i < $maxAttempts; $i++) {
+            $this->logOutgoingRequest('GET', $pollUrl, [], ['Authorization' => 'Token [REDACTED]'], 'poll_prediction');
             $poll = $this->http(20)->withHeaders(['Authorization' => 'Token ' . $this->apiKey()])->get($pollUrl);
             $this->throwForHttpErrors($poll);
 
@@ -126,7 +171,7 @@ class ReplicateProvider extends AbstractProvider
     {
         $response = $this->http(60)->get($url);
 
-        if (! $response->successful()) {
+        if (!$response->successful()) {
             throw new TemporaryProviderException($this->getSlug(), 'Failed to download generated audio');
         }
 

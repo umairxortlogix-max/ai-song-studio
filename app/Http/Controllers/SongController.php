@@ -93,6 +93,24 @@ class SongController extends Controller
         ]);
     }
 
+    public function regenerate(Song $song): RedirectResponse
+    {
+        $this->authorize('update', $song);
+
+        $song->update(['status' => 'pending']);
+
+        $generation = SongGeneration::create([
+            'song_id' => $song->id,
+            'user_id' => $song->user_id,
+            'stage' => 'pending',
+            'status' => 'pending',
+        ]);
+
+        GenerateLyricsJob::dispatch($song->id, $generation->id);
+
+        return redirect()->route('songs.show', $song)->with('status', 'The song is being regenerated.');
+    }
+
     public function download(Song $song, string $format)
     {
         $this->authorize('download', $song);

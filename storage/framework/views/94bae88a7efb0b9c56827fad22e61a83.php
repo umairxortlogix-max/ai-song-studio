@@ -50,4 +50,4 @@
     </main>
 </body>
 </html>
-<?php /**PATH D:\laravel project\ai-song-studio\resources\views/layouts/app.blade.php ENDPATH**/ ?>
+<?php /**PATH C:\laragon\www\ai-song-studio\resources\views/layouts/app.blade.php ENDPATH**/ ?>

@@ -53,7 +53,7 @@ class HuggingFaceProvider extends AbstractProvider
 
     public function generateMusic(MusicRequest $request): MusicResult
     {
-        $model = trim((string) $this->modelName());
+        $model = trim((string) $this->providerModel->model);
         if (! str_contains(strtolower($model), 'musicgen')) {
             throw new TemporaryProviderException($this->getSlug(), 'This Hugging Face model is not configured for music generation.');
         }
@@ -126,7 +126,7 @@ class HuggingFaceProvider extends AbstractProvider
 
     public function supportedOperations(): array
     {
-        $model = strtolower((string) ($this->modelName() ?? ''));
+        $model = strtolower((string) ($this->providerModel->model ?? ''));
 
         if (str_contains($model, 'musicgen')) {
             return ['generate_music'];
