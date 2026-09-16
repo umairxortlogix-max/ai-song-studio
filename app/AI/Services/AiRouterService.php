@@ -46,7 +46,10 @@ class AiRouterService
     public function __construct(
         private readonly ProviderResolver $resolver,
     ) {
-        $this->validateConfiguredProviders();
+        // NOTE: config validation is deliberately NOT done here. Running a DB
+        // query in the constructor fires on every container resolve and blows up
+        // during `migrate` / `config:cache` when ai_providers does not exist yet.
+        // Call validateConfiguredProviders() explicitly (e.g. from ai:health-check).
     }
 
     /**
@@ -70,7 +73,6 @@ class AiRouterService
     public function attempt(string $operation, mixed $request, ?int $userId = null): mixed
     {
         $requestId = (string) Str::uuid();
-        $requestSummary = $this->summarizePayload($request);
         $startedAt = microtime(true);
 
         $providers = $this->getEligibleProvidersInOrder();
@@ -90,6 +92,7 @@ class AiRouterService
 
         $attempted = [];
         $providerResults = [];
+        $failureReason = null;
 
         foreach ($providers as $providerIndex => $providerModel) {
             $providerName = $providerModel->slug;
@@ -136,15 +139,26 @@ class AiRouterService
                 continue;
             }
 
-            $result = $this->tryProviderWithRetries($provider, $providerModel, $operation, $request, $userId, $requestId);
+            $result = $this->tryProviderWithRetries($provider, $providerModel, $operation, $request, $userId, $requestId, $failureReason);
 
             if ($result !== null) {
-                $durationMs = $this->elapsedMs($startedAt);
+                Log::info('AI Router provider succeeded', [
+                    'request_id' => $requestId,
+                    'provider' => $providerName,
+                    'operation' => $operation,
+                    'duration_ms' => $this->elapsedMs($startedAt),
+                ]);
 
                 return $result;
             }
 
             // tryProviderWithRetries returning null means: move to next provider.
+            $providerResults[] = [
+                'provider' => $providerName,
+                'outcome' => 'failed',
+                'reason' => $failureReason ?? 'unknown failure',
+                'priority' => $priority,
+            ];
         }
 
         Log::error('AI Router all providers exhausted', [
@@ -153,14 +167,6 @@ class AiRouterService
             'attempted' => $attempted,
             'provider_results' => $providerResults,
             'duration_ms' => $this->elapsedMs($startedAt),
-        ]);
-
-        Log::error('AI Router no eligible providers details', [
-            'request_id' => $requestId,
-            'operation' => $operation,
-            'provider_checks' => $this->buildCapabilityCheckResults($operation, $providers),
-            'attempted' => $attempted,
-            'provider_results' => $providerResults,
         ]);
 
         throw new AllProvidersUnavailableException($attempted);
@@ -179,9 +185,11 @@ class AiRouterService
         mixed $request,
         ?int $userId,
         string $requestId,
+        ?string &$lastFailureReason = null,
     ): mixed {
         $attempt = 0;
         $failureReasons = [];
+        $lastFailureReason = null;
 
         while ($attempt <= self::MAX_RETRIES_PER_PROVIDER) {
             $attempt++;
@@ -217,6 +225,8 @@ class AiRouterService
                     continue;
                 }
 
+                $lastFailureReason = $reason . ': ' . $e->getMessage();
+
                 return null; // move on
             } catch (QuotaExceededException $e) {
                 $reason = 'quota_exceeded';
@@ -234,6 +244,8 @@ class AiRouterService
                     'decision' => 'move_to_next_provider',
                     'response_time_ms' => $this->elapsedMs($startedAt),
                 ]);
+
+                $lastFailureReason = $reason . ': ' . $e->getMessage();
 
                 return null; // never retry this provider again today
             } catch (TemporaryProviderException $e) {
@@ -259,6 +271,8 @@ class AiRouterService
                 }
 
                 $this->markStatus($providerModel, ProviderStatus::Error);
+                $lastFailureReason = $reason . ': ' . $e->getMessage();
+
                 return null;
             } catch (ProviderException $e) {
                 $reason = 'provider_auth_or_validation_error';
@@ -278,6 +292,8 @@ class AiRouterService
                     'response_time_ms' => $this->elapsedMs($startedAt),
                 ]);
 
+                $lastFailureReason = $reason . ': ' . $e->getMessage();
+
                 return null;
             } catch (Throwable $e) {
                 $failureReasons[] = 'unexpected_error: ' . $e->getMessage();
@@ -296,6 +312,8 @@ class AiRouterService
                     'response_time_ms' => $this->elapsedMs($startedAt),
                 ]);
 
+                $lastFailureReason = 'unexpected_error: ' . $e->getMessage();
+
                 return null;
             }
         }
@@ -307,6 +325,8 @@ class AiRouterService
             'retries_used' => $attempt,
             'failure_reasons' => $failureReasons,
         ]);
+
+        $lastFailureReason = $failureReasons ? end($failureReasons) : 'retries exhausted';
 
         return null;
     }
@@ -424,7 +444,7 @@ class AiRouterService
                 continue;
             }
 
-            $supported = $this->detectSupportedOperationsFromModel($provider->provider_type, $model);
+            $supported = $this->detectSupportedOperations($provider);
             if ($supported === []) {
                 Log::warning('AI Router provider config warning', [
                     'provider' => $provider->slug,
@@ -438,29 +458,13 @@ class AiRouterService
         }
     }
 
-    private function buildStartupCapabilityMatrix(): array
-    {
-        $rows = [];
-
-        foreach (AiProvider::query()->where('is_active', true)->orderBy('priority')->get() as $provider) {
-            $rows[] = [
-                'provider' => $provider->slug,
-                'provider_type' => $provider->provider_type,
-                'model' => $provider->model,
-                'supported_operations' => $this->detectSupportedOperationsFromModel($provider->provider_type, $provider->model),
-            ];
-        }
-
-        return $rows;
-    }
-
     private function buildCapabilityCheckResults(string $operation, $providers): array
     {
         $result = [];
 
         foreach ($providers as $provider) {
             $providerModel = $provider->model ?? '';
-            $supported = $this->detectSupportedOperationsFromModel($provider->provider_type, $providerModel);
+            $supported = $this->detectSupportedOperations($provider);
             $result[] = [
                 'provider' => $provider->slug,
                 'provider_type' => $provider->provider_type,
@@ -475,28 +479,25 @@ class AiRouterService
         return $result;
     }
 
-    private function detectSupportedOperationsFromModel(?string $providerType, ?string $model): array
+    /**
+     * Ask the provider CLASS what it supports instead of re-deriving it from the
+     * model string. The old hard-coded match() here was a second, competing copy
+     * of the same rules and had already drifted (it knew nothing about music-01),
+     * so the capability logs contradicted what the router actually did.
+     */
+    private function detectSupportedOperations(AiProvider $providerModel): array
     {
-        $normalized = strtolower((string) ($model ?? ''));
+        $provider = $this->resolver->resolve($providerModel);
 
-        return match ($providerType) {
-            'huggingface' => (str_contains($normalized, 'musicgen') ? ['generate_music'] : []),
-            'replicate' => array_values(array_filter([
-                str_contains($normalized, 'musicgen') ? 'generate_music' : null,
-                str_contains($normalized, 'bark') || str_contains($normalized, 'riffusion') ? 'generate_vocals' : null,
-            ])),
-            'stability' => (str_contains($normalized, 'stable-audio') ? ['generate_music'] : []),
-            'local' => ['generate_lyrics', 'generate_music', 'generate_vocals'],
-            default => [],
-        };
+        return $provider ? $provider->supportedOperations() : [];
     }
 
     private function knownModelHints(?string $providerType): array
     {
         return match ($providerType) {
             'huggingface' => ['facebook/musicgen-small'],
-            'replicate' => ['meta/musicgen', 'suno-ai/bark', 'riffusion/riffusion'],
-            'stability' => ['stable-audio'],
+            'replicate' => ['minimax/music-01', 'google/lyria-2', 'meta/musicgen', 'suno-ai/bark', 'riffusion/riffusion'],
+            'stability' => ['stable-audio', 'stable-audio-2'],
             'local' => ['local-open-source'],
             default => [],
         };

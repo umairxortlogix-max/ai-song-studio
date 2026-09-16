@@ -47,7 +47,7 @@ class GenerateMusicJob implements ShouldQueue
                 'song_id' => $song->id,
                 'type' => 'instrumental',
                 'path' => $result->filePath,
-                'format' => 'mp3',
+                'format' => pathinfo($result->filePath, PATHINFO_EXTENSION) ?: 'mp3',
                 'duration_seconds' => $result->durationSeconds,
             ]);
 

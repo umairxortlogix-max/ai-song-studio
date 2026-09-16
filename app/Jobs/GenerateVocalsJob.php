@@ -47,7 +47,7 @@ class GenerateVocalsJob implements ShouldQueue
                 'song_id' => $song->id,
                 'type' => 'vocals',
                 'path' => $result->filePath,
-                'format' => 'mp3',
+                'format' => pathinfo($result->filePath, PATHINFO_EXTENSION) ?: 'mp3',
             ]);
 
             $generation->update(['stage' => 'vocals_generated', 'progress' => 75]);

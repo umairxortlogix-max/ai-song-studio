@@ -39,7 +39,6 @@ class MixAudioJob implements ShouldQueue
         $instrumental = $song->audioFiles()->where('type', 'instrumental')->latest()->first();
         $vocals = $song->audioFiles()->where('type', 'vocals')->latest()->first();
 
-        $outputRelative = sprintf('songs/%s/%s/%s/final.mp3', now()->format('Y'), now()->format('m'), $song->user_id) ;
         $outputRelative = sprintf('songs/%s/%s/%s/%s/final.mp3', now()->format('Y'), now()->format('m'), $song->user_id, $song->id);
 
         $outputAbsolute = Storage::disk('public')->path($outputRelative);

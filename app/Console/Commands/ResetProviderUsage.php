@@ -24,6 +24,13 @@ class ResetProviderUsage extends Command
 
         if (Cache::add("ai_usage_reset_daily:{$today}", true, now()->endOfDay())) {
             AiProvider::query()->update(['used_today' => 0]);
+
+            // Clearing the counter is not enough: isQuotaExhaustedLocally() also skips on
+            // status, so a provider that hit its quota once stayed skipped forever.
+            AiProvider::query()
+                ->whereIn('status', ['quota_exhausted', 'rate_limited'])
+                ->update(['status' => 'healthy', 'failure_count' => 0]);
+
             $this->info('Daily provider usage counters reset.');
         }
 
@@ -31,6 +38,9 @@ class ResetProviderUsage extends Command
             $month = now()->format('Y-m');
             if (Cache::add("ai_usage_reset_monthly:{$month}", true, now()->endOfMonth())) {
                 AiProvider::query()->update(['used_this_month' => 0]);
+                AiProvider::query()
+                    ->where('status', 'quota_exhausted')
+                    ->update(['status' => 'healthy', 'failure_count' => 0]);
                 $this->info('Monthly provider usage counters reset.');
             }
         }

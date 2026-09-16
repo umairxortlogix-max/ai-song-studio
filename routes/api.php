@@ -12,7 +12,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/songs/{song}/generate-full', [SongApiController::class, 'generateFull']);
     Route::post('/songs/{song}/regenerate', [SongApiController::class, 'regenerate']);
     Route::get('/songs/{song}/status', [SongApiController::class, 'status']);
-    Route::get('/songs/{song}/download', [SongApiController::class, 'download']);
+    Route::get('/songs/{song}/download/{format}', [SongApiController::class, 'download']);
     Route::get('/providers', [SongApiController::class, 'providers']);
 
     Route::middleware('admin')->prefix('admin')->group(function () {

@@ -43,6 +43,15 @@ return [
 
     /*
     |--------------------------------------------------------------------
+    | Log every outgoing provider HTTP request (method/url/payload, with
+    | credentials redacted). Very useful while debugging the fallback
+    | chain; turn off in production if the logs get noisy.
+    |--------------------------------------------------------------------
+    */
+    'log_provider_requests' => (bool) env('AI_LOG_PROVIDER_REQUESTS', true),
+
+    /*
+    |--------------------------------------------------------------------
     | Default per-user daily generation limit (independent of provider
     | quotas — this caps how many songs a single user can generate).
     |--------------------------------------------------------------------

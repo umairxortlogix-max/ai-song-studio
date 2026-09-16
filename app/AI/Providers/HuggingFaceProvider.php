@@ -15,8 +15,9 @@ use App\AI\Exceptions\QuotaExceededException;
 use App\AI\Exceptions\RateLimitException;
 use App\AI\Exceptions\TemporaryProviderException;
 use App\AI\Services\MusicPromptBuilder;
-use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 /**
  * EXAMPLE Provider A — free-tier text/audio inference API pattern

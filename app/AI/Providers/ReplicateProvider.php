@@ -19,10 +19,11 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 /**
- * EXAMPLE Provider B — async prediction API pattern (e.g. Replicate's
- * free-credits tier running an open-source music model such as
- * MusicGen). Demonstrates polling a job until it completes, still
- * within the same MusicProviderInterface contract.
+ * ReplicateProvider uses Replicate's official model endpoint pattern:
+ * https://api.replicate.com/v1/models/{owner}/{model}/predictions
+ * This avoids the invalid "version" field requirement for owner/model
+ * strings such as "meta/musicgen" and keeps the prediction object
+ * polling flow consistent with Replicate's async API.
  */
 class ReplicateProvider extends AbstractProvider
 {
@@ -34,18 +35,22 @@ class ReplicateProvider extends AbstractProvider
     public function generateMusic(MusicRequest $request): MusicResult
     {
         $prompt = trim(sprintf(
-            '%s %s instrumental, tempo %s, instruments: %s',
-            $request->mood,
+            '%s track, mood: %s, tempo: %s, instruments: %s',
             $request->genre,
+            $request->mood,
             $request->tempoBpm ? "{$request->tempoBpm} BPM" : 'moderate',
-            implode(', ', $request->instruments) ?: 'orchestral'
+            implode(', ', $request->instruments) ?: 'acoustic'
         ));
 
-        $url = rtrim($this->baseUrl(), '/') . '/models/' . $this->modelName() . '/predictions';
+        $songDuration = (int) ($request->durationSeconds ?? 30);
+        [$owner, $model] = $this->parseModelOwnerAndName();
+        $url = rtrim($this->baseUrl(), '/') . '/models/' . $owner . '/' . $model . '/predictions';
+
         $payload = [
             'input' => [
                 'prompt' => $prompt,
-                'duration' => $request->durationSeconds ?? 30,
+                'lyrics' => $request->lyrics ?? '',
+                'song_duration' => $songDuration,
             ],
         ];
 
@@ -64,18 +69,19 @@ class ReplicateProvider extends AbstractProvider
 
         $relativePath = $this->downloadToStorage($audioUrl, 'instrumental');
 
-        return new MusicResult(filePath: $relativePath, providerSlug: $this->getSlug(), durationSeconds: $request->durationSeconds);
+        return new MusicResult(filePath: $relativePath, providerSlug: $this->getSlug(), durationSeconds: $songDuration);
     }
 
     public function generateVocals(VocalsRequest $request): VocalsResult
     {
-        $model = trim((string) $this->modelName());
-        if (!str_contains(strtolower($model), 'bark') && !str_contains(strtolower($model), 'riffusion')) {
+        $model = strtolower(trim((string) $this->modelName()));
+
+        if (! $this->modelSupportsVocals($model)) {
             throw new TemporaryProviderException($this->getSlug(), 'This Replicate model is not configured for vocal synthesis.');
         }
 
+        [$owner, $modelName] = $this->parseModelOwnerAndName();
         $payload = [
-            'version' => $model,
             'input' => [
                 'text' => $request->lyrics,
                 'prompt' => $request->lyrics,
@@ -83,7 +89,7 @@ class ReplicateProvider extends AbstractProvider
             ],
         ];
 
-        $url = rtrim($this->baseUrl(), '/') . '/predictions';
+        $url = rtrim($this->baseUrl(), '/') . '/models/' . $owner . '/' . $modelName . '/predictions';
         $this->logOutgoingRequest('POST', $url, $payload, ['Authorization' => 'Token [REDACTED]'], 'generate_vocals');
 
         $create = $this->http(30)
@@ -132,15 +138,42 @@ class ReplicateProvider extends AbstractProvider
         $model = strtolower((string) ($this->modelName() ?? ''));
         $operations = [];
 
-        if (str_contains($model, 'musicgen')) {
+        if ($this->modelSupportsMusic($model)) {
             $operations[] = 'generate_music';
         }
 
-        if (str_contains($model, 'bark') || str_contains($model, 'riffusion')) {
+        if ($this->modelSupportsVocals($model)) {
             $operations[] = 'generate_vocals';
         }
 
         return $operations;
+    }
+
+    /**
+     * Single source of truth for what the configured Replicate model can do.
+     * supportedOperations() and the generate* guards MUST agree, otherwise the
+     * router burns three retries on a call that can never succeed.
+     */
+    private function modelSupportsMusic(string $model): bool
+    {
+        foreach (['musicgen', 'music-01', 'lyria', 'ace-step', 'riffusion'] as $needle) {
+            if (str_contains($model, $needle)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function modelSupportsVocals(string $model): bool
+    {
+        foreach (['bark', 'riffusion', 'music-01'] as $needle) {
+            if (str_contains($model, $needle)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function pollUntilComplete(string $pollUrl, int $maxAttempts = 30, int $delaySeconds = 2): string
@@ -167,11 +200,26 @@ class ReplicateProvider extends AbstractProvider
         throw new TemporaryProviderException($this->getSlug(), 'Prediction timed out waiting for completion');
     }
 
+    private function parseModelOwnerAndName(): array
+    {
+        $model = trim((string) $this->modelName());
+
+        if (str_contains($model, '/')) {
+            [$owner, $name] = array_pad(explode('/', $model, 2), 2, '');
+
+            if ($owner !== '' && $name !== '') {
+                return [$owner, $name];
+            }
+        }
+
+        return ['owner', $model !== '' ? $model : 'model'];
+    }
+
     private function downloadToStorage(string $url, string $label): string
     {
         $response = $this->http(60)->get($url);
 
-        if (!$response->successful()) {
+        if (! $response->successful()) {
             throw new TemporaryProviderException($this->getSlug(), 'Failed to download generated audio');
         }
 

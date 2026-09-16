@@ -106,6 +106,11 @@ class LocalModelProvider extends AbstractProvider
         );
     }
 
+    protected function requiresApiKey(): bool
+    {
+        return false;
+    }
+
     public function supportsVocals(): bool
     {
         return true;
